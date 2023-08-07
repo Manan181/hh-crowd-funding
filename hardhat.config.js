@@ -1,5 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("./tasks");
+require("hardhat/deploy");
 require("dotenv").config();
 
 const COMPILER_SETTINGS = {
@@ -62,15 +62,7 @@ module.exports = {
         // coinmarketcap: process.env.COINMARKETCAP_API_KEY,
     },
     contractSizer: {
-        runOnCompile: false,
-        only: [
-            "APIConsumer",
-            "AutomationCounter",
-            "NFTFloorPriceConsumerV3",
-            "PriceConsumerV3",
-            "RandomNumberConsumerV2",
-            "RandomNumberDirectFundingConsumerV2",
-        ],
+        runOnCompile: false
     },
     paths: {
         sources: "./contracts",
