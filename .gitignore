@@ -102,3 +102,7 @@ gas-report.txt
 
 contracts/test/fuzzing/crytic-export
 .husky
+
+# IPFS files
+funding
+milestones

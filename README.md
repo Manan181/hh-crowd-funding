@@ -15,8 +15,6 @@
   - [Run a Local Network](#run-a-local-network)
   - [Using a Testnet or Live Network (like Mainnet or Polygon)](#using-a-testnet-or-live-network-like-mainnet-or-polygon)
     - [Sepolia Ethereum Testnet Setup](#sepolia-ethereum-testnet-setup)
-  - [Forking](#forking)
-  - [Auto-Funding](#auto-funding)
 - [Test](#test)
 - [Interacting with Deployed Contracts](#interacting-with-deployed-contracts)
   - [Chainlink Price Feeds](#chainlink-price-feeds)
@@ -33,17 +31,6 @@
 - [Contributing](#contributing)
 - [Thank You!](#thank-you)
   - [Resources](#resources)
-
-# Chainlink Hardhat Starter Kit
- Implementation of the following 4 Chainlink features using the [Hardhat](https://hardhat.org/) development environment:
- - [Chainlink Price Feeds](https://docs.chain.link/docs/using-chainlink-reference-contracts)
- - [Chainlink VRF](https://docs.chain.link/docs/chainlink-vrf)
- - [Chainlink Keepers](https://docs.chain.link/docs/chainlink-keepers/introduction/)
- - [Request & Receive data](https://docs.chain.link/docs/request-and-receive-data)
-
-# Getting Started 
-
-It's recommended that you've gone through the [hardhat getting started documentation](https://hardhat.org/getting-started/) before proceeding here. 
 
 ## Requirements
 
@@ -95,15 +82,6 @@ or
 
 ```
 yarn test
-```
-
-### Typescript
-
-To use typescript, run:
-
-```
-git checkout typescript
-npm install
 ```
 
 # Usage
@@ -206,33 +184,6 @@ To run staging testnet tests
 npm run test-staging
 ```
 
-## Forking 
- 
-If you would like to run tests on a [forked network](https://hardhat.org/hardhat-network/guides/mainnet-forking.html), follow these steps: 
-
-1. Set a `MAINNET_RPC_URL` environment variable that connects to the mainnet.
-2. Choose a block number to select a state of the network you are forking and set it as `FORKING_BLOCK_NUMBER` environment variable. If ignored, it will use the latest block each time which can lead to test inconsistency.
-3. Set `enabled` flag to `true`/`false` to enable/disable forking feature
-```
-      forking: {
-        url: MAINNET_RPC_URL,
-        blockNumber: FORKING_BLOCK_NUMBER,
-        enabled: false,
-      }
-```
-
-
-## Auto-Funding
-
-This Starter Kit is configured by default to attempt to auto-fund any newly deployed contract that uses Any-API, to save having to manually fund them after each deployment. The amount in LINK to send as part of this process can be modified in the [Starter Kit Config](helper-hardhat-config.js), and are configurable per network.
-
-| Parameter  | Description                                       | Default Value |
-| ---------- | :------------------------------------------------ | :------------ |
-| fundAmount | Amount of LINK to transfer when funding contracts | 0.1 LINK      |
-
-If you wish to deploy the smart contracts without performing the auto-funding, add an `AUTO_FUND` environment variable, and set it to false. 
-
-
 # Test
 Tests are located in the [test](./test/) directory, and are split between unit tests and staging/testnet tests. Unit tests should only be run on local environments, and staging tests should only run on live environments.
 
@@ -278,102 +229,6 @@ npm run test --parallel
 ```
 
 # Interacting with Deployed Contracts
-
-After deploying your contracts, the deployment output will give you the contract addresses as they are deployed. You can then use these contract addresses in conjunction with Hardhat tasks to perform operations on each contract.
-
-
-## Chainlink Price Feeds
-The Price Feeds consumer contract has one task, to read the latest price of a specified price feed contract
-
-```bash
-npx hardhat read-price-feed --contract insert-contract-address-here --network network
-```
-
-## Request & Receive Data
-The APIConsumer contract has two tasks, one to request external data based on a set of parameters, and one to check to see what the result of the data request is. This contract needs to be funded with link first:
-
-```bash
-npx hardhat fund-link --contract insert-contract-address-here --network network
-```
-
-Once it's funded, you can request external data by passing in a number of parameters to the request-data task. The contract parameter is mandatory, the rest are optional
-
-```bash
-npx hardhat request-data --contract insert-contract-address-here --network network
-```
-
-Once you have successfully made a request for external data, you can see the result via the read-data task
-```bash
-npx hardhat read-data --contract insert-contract-address-here --network network
-```
-
-
-## VRF Get a random number
-The VRFConsumer contract has two tasks, one to request a random number, and one to read the result of the random number request. 
-As explained in the [developer documentation](https://docs.chain.link/vrf/v2/introduction), there are two methods:
-- The [Subscription method](https://docs.chain.link/vrf/v2/subscription)
-- The [Direct Funding method](https://docs.chain.link/vrf/v2/direct-funding)
-
-Read the docs first to understand which method is the most suitable for your use case.
-
-### VRF Subscription method
-To start, go to [VRF Subscription Page](https://vrf.chain.link/sepolia) and create the new subscription. Save your subscription ID and put it in `helper-hardhat-config.js` file as `subscriptionId`:
-
-```javascript
-5: {
-    // rest of the config
-    subscriptionId: "777"
-}
-```
-
-Then, deploy your VRF V2 contract consumer to the network of your recent subscription using subscription id as constructor argument.
-
-```bash
-npm run deploy --network network   
-```
-
-Finally, you need to go to your subscription page one more time and add the address of deployed contract as a new consumer. Once that's done, you can perform a VRF request with the request-random-number task:
-
-```bash
-npx hardhat request-random-number --contract insert-contract-address-here --network network
-```
-
-Once you have successfully made a request for a random number, you can see the result via the read-random-number task:
-
-```bash
-npx hardhat read-random-number --contract insert-contract-address-here --network network
-```
-
-### VRF Direct Funding method
-Deploy your VRF V2 contract consumer to the network.
-
-```bash
-npm run deploy --network network   
-```
-
-or (if you are using yarn)
-
-```bash
-yarn deploy --network network   
-```
-
-Now you have to fund your consumer contract with LINK tokens:
-
-```bash
-npx hardhat transfer-link --recipient insert-contract-address-here --amount insert-amount-in-juels-here --network network
-```
-
-Once that's done, you can perform a VRF request with the request-random-number task:
-
-```bash
-npx hardhat request-random-number-direct-funding --callbackgaslimit insert-callback-gas-limit-here --requestconfirmations insert-request-confirmations-here --numwords insert-number-words-here --contract insert-contract-address-here --network network
-```
-
-Once you have successfully made a request for a random number, you can see the result via the read-random-number task:
-
-```bash
-npx hardhat read-random-number-direct-funding --contract insert-contract-address-here --network network
-```
 
 ## Automation
 The AutomationCounter contract is a simple Chainlink Automation enabled contract that simply maintains a counter variable that gets incremented each time the performUpkeep task is performed by a Chainlink Automation. Once the contract is deployed, you should head to [https://automation.chain.link/](https://automation.chain.link/) to register it for upkeeps, then you can use the task below to view the counter variable that gets incremented by Chainlink Automation
@@ -427,28 +282,6 @@ If you'd like to see the gas prices in USD or other currency, add a `COINMARKETC
 To see a measure in percent of the degree to which the smart contract source code is executed when a particular test suite is run, type
 ```
 npm run coverage
-```
-
-# Fuzzing
-
-We are going to use Echidna as a Fuzz testing tool. You need to have [Docker](https://www.docker.com/) installed with at least 8GB virtual memory allocated (To update this parameter go to _Settings->Resources->Advanced->Memory_). 
-
-To start Echidna instance run
-
-```
-npm run fuzzing
-```
-
-If you are using it for the first time, you will need to wait for Docker to download [eth-security-toolbox](https://hub.docker.com/r/trailofbits/eth-security-toolbox) image for us.
-
-To start Fuzzing run
-```
-echidna-test /src/contracts/test/fuzzing/AutomationCounterEchidnaTest.sol --contract AutomationCounterEchidnaTest --config /src/contracts/test/fuzzing/config.yaml
-```
-
-To exit Echidna type
-```bash
-exit
 ```
 
 # Contributing
