@@ -105,4 +105,4 @@ contracts/test/fuzzing/crytic-export
 
 # IPFS files
 funding
-milestones
+/milestones/

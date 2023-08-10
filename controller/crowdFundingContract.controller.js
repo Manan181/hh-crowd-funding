@@ -1,16 +1,11 @@
 require("dotenv").config();
 const { ethers } = require("hardhat");
 const CrowdFundingContract = require("../build/artifacts/contracts/CrowdFundingContract.sol/CrowdFundingContract.json");
-const provider = new ethers.providers.JsonRpcProvider('http://127.0.0.1:7545');
+const { getLatestBlockTimeStamp, convertToWei, convertToEther, getProvider } = require("../utils/utils");
 
 const getCampaign = async (to) => {
-    const crowdFundingInstance = new ethers.Contract(to, CrowdFundingContract.abi, provider);
+    const crowdFundingInstance = new ethers.Contract(to, CrowdFundingContract.abi, getProvider());
     return crowdFundingInstance;
-}
-
-const getLatestBlockTimeStamp = async () => {
-    const timeStamp = (await ethers.provider.getBlock("latest")).timestamp;
-    return timeStamp;
 }
 
 module.exports = {
@@ -22,8 +17,15 @@ module.exports = {
             const signer = await campaignInstance.provider.getSigner(campaignOwnerAddress);
             const txResponse = await campaignInstance.connect(signer).withdrawMilestone();
             const txReceipt = await txResponse.wait();
-            return res.status(200).send({ message: "Success", data: txReceipt });
+
+            if (txReceipt?.events[0]?.event !== "MilestoneRejected") {
+                return res.status(200).send({ message: "Success", data: txReceipt });
+            } else {
+                return res.status(200).send({ message: "Failed to withdraw funds", data: txReceipt });
+            }
         } catch (error) {
+            error.body = JSON.parse(error.body);
+            error.requestBody = JSON.parse(error.requestBody);
             return res.status(500).send({ message: "Something went wrong", error });
         }
     },
@@ -44,12 +46,12 @@ module.exports = {
 
     createNewMilestone: async (req, res) => {
         try {
-            const { milestoneCID, votingPeriodInDays, campaignOwnerAddress, campaignAddress } = req.body;
-            const votingPeriod = await getLatestBlockTimeStamp() + (votingPeriodInDays * 24 * 60 * 60);
+            const { milestoneCID, votingPeriod, campaignOwnerAddress, campaignAddress } = req.body;
+            const newVotingPeriod = await getLatestBlockTimeStamp() + votingPeriod;
             const campaignInstance = await getCampaign(campaignAddress);
 
             const signer = await campaignInstance.provider.getSigner(campaignOwnerAddress);
-            const txResponse = await campaignInstance.connect(signer).createNewMilestone(milestoneCID, votingPeriod);
+            const txResponse = await campaignInstance.connect(signer).createNewMilestone(milestoneCID, newVotingPeriod);
             const txReceipt = await txResponse.wait();
             return res.status(200).send({ message: "Success", data: txReceipt });
         } catch (error) {
@@ -59,14 +61,14 @@ module.exports = {
 
     makeDonation: async (req, res) => {
         try {
-            const { value, fromAddress, to: campaignAddress } = req.body;
+            const { value, fromAddress, campaignAddress } = req.body;
             if (!value) {
                 return res.status(400).send({ message: "Required fields are missing!" });
             }
-            const weiValue = ethers.utils.parseEther(value);
-            const instance = await getCampaign(campaignAddress);
-            const signer = await instance.provider.getSigner(fromAddress);
-            const crowdFunding = await instance.connect(signer).makeDonation({ value: weiValue });
+            const weiValue = convertToWei(value);
+            const campaignInstance = await getCampaign(campaignAddress);
+            const signer = await campaignInstance.provider.getSigner(fromAddress);
+            const crowdFunding = await campaignInstance.connect(signer).makeDonation({ value: weiValue });
             const receipt = await crowdFunding.wait();
             return res.status(200).send({ message: "Success", data: receipt });
         } catch (error) {
@@ -82,7 +84,7 @@ module.exports = {
             }
             const campaignInstance = await getCampaign(campaignAddress);
             const balance = await campaignInstance.etherBalance();
-            const balanceInEther = ethers.utils.formatEther(balance);
+            const balanceInEther = convertToEther(balance);
             return res.status(200).send({ message: "Success", data: { balanceInEther } });
         } catch (error) {
             return res.status(500).send({ message: "Something went wrong", error });
@@ -97,7 +99,7 @@ module.exports = {
             }
             const campaignInstance = await getCampaign(campaignAddress);
             const donation = await campaignInstance.getDonation();
-            const donationInEther = ethers.utils.formatEther(donation);
+            const donationInEther = convertToEther(donation);
             return res.status(200).send({ message: "Success", data: { donationInEther: donationInEther } });
         } catch (error) {
             return res.status(500).send({ message: "Something went wrong", error });
@@ -174,7 +176,8 @@ module.exports = {
             }
             const campaignInstance = await getCampaign(campaignAddress);
             const targetAmount = await campaignInstance.getTargetAmount();
-            return res.status(200).send({ message: "Success", data: { targetAmount: targetAmount.toString() }});
+            const balanceInEther = convertToEther(targetAmount);
+            return res.status(200).send({ message: "Success", data: { targetAmount: balanceInEther }});
         } catch (error) {
             return res.status(500).send({ message: "Something went wrong", error });
         }
