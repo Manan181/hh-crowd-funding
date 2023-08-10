@@ -43,7 +43,9 @@
     "typechain": "^8.1.0"
   },
   "dependencies": {
-    "dotenv": "^16.0.3"
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2"
   },
   "lint-staged": {
     "*.{js,json,yml,yaml}": [

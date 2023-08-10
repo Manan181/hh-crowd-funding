@@ -73,7 +73,7 @@ contract CrowdFundingContract is Initializable {
         emit FundsDonated(msg.sender, funds, block.timestamp);
     }
 
-    function creatNewMilestone(string memory milestoneCID, uint256 votingPeriod) public {
+    function createNewMilestone(string memory milestoneCID, uint256 votingPeriod) public {
         require(msg.sender == sCampaignOwner, "you not the owner");
         //check if we have a pending milestone
         //check if we have a pending milestone or no milestone at all
@@ -110,14 +110,10 @@ contract CrowdFundingContract is Initializable {
         require(donors[msg.sender] != 0, "you are not a donor");
 
         uint256 counter = 0;
-        uint256 milestoneVoteArrayLength = milestones[sMilestoneCounter]
-            .votes
-            .length;
+        uint256 milestoneVoteArrayLength = milestones[sMilestoneCounter].votes.length;
         bool voted = false;
         for (counter; counter < milestoneVoteArrayLength; ++counter) {
-            MilestoneVote memory userVote = milestones[sMilestoneCounter].votes[
-                counter
-            ];
+            MilestoneVote memory userVote = milestones[sMilestoneCounter].votes[counter];
             if (userVote.donorAddress == msg.sender) {
                 //already voted
                 voted = true;
@@ -150,9 +146,7 @@ contract CrowdFundingContract is Initializable {
         );
 
         //calculate the percentage
-        (uint yesvote, uint256 novote) = _calculateTheVote(
-            milestones[sMilestoneCounter].votes
-        );
+        (uint yesvote, uint256 novote) = _calculateTheVote(milestones[sMilestoneCounter].votes);
 
         //calculate the vote percentage and make room for those that did not vote
         uint256 totalYesVote = sNumberOfDonors - novote;
@@ -183,7 +177,7 @@ contract CrowdFundingContract is Initializable {
                 sCampaignEnded = true;
             }
 
-            (bool success, ) = sCampaignOwner.call{value: amountToWithdraw}("");
+            bool success = sCampaignOwner.send(amountToWithdraw);
             require(success, "withdrawal failed");
             emit FundsWithdrawn(
                 sCampaignOwner,
@@ -231,7 +225,7 @@ contract CrowdFundingContract is Initializable {
         return sNumberOfDonors;
     }
 
-    function showCurrentMillestone() public view returns (Milestone memory) {
+    function showCurrentMilestone() public view returns (Milestone memory) {
         return milestones[sMilestoneCounter];
     }
 

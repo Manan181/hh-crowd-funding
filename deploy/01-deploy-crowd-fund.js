@@ -1,9 +1,5 @@
 const { network, ethers } = require("hardhat");
-const {
-    networkConfig,
-    developmentChains,
-    VERIFICATION_BLOCK_CONFIRMATIONS,
-} = require("../helper-hardhat-config");
+const { networkConfig, developmentChains, VERIFICATION_BLOCK_CONFIRMATIONS } = require("../helper-hardhat-config");
 const { verify } = require("../utils/verify");
 
 module.exports = async ({ getNamedAccounts, deployments }) => {
@@ -41,5 +37,5 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         log("Verifying CrowdFundingContract...");
         await verify(crowdSourcingFactory.address, arguments);
     }
-    
+
 }
