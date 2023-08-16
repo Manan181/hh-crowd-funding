@@ -1,9 +1,12 @@
 //SPDX-License-Identifier:MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./CrowdFundingContract.sol";
+
+error InsufficientDeposit();
+error CreationFailed();
 
 contract CrowdSourcingFactory is Ownable {
     // state variables;
@@ -22,24 +25,32 @@ contract CrowdSourcingFactory is Ownable {
     receive() external payable {}
 
     function createCrowdFundingContract(string memory _fundingCID, uint256 _amount, uint256 _duration) external payable returns (address) {
-        require(msg.value >= sFundingFee, "deposit too small");
+        if (msg.value < sFundingFee) {
+            revert InsufficientDeposit();
+        }
         address clone = Clones.clone(sCrowdFundingImplementation);
         (bool success, ) = clone.call(abi.encodeWithSignature("initialize(string,uint256,uint256)", _fundingCID, _amount, _duration));
-        require(success, "creation failed");
+        if (!success) {
+            revert CreationFailed();
+        }
 
         sDeployedContracts.push(clone);
         emit NewCrowdFundingCreated(msg.sender, sFundingFee, clone, _fundingCID);
         return clone;
     }
 
-    function withdrawFunds() public onlyOwner {
+    function withdrawFunds() external onlyOwner {
         uint256 balance = address(this).balance;
-        require(balance > 0, "nothing to withdraw");
+        if (balance == 0) {
+            revert InsufficientFunds();
+        }
         (bool success, ) = payable(msg.sender).call{ value: balance }("");
-        require(success, "withdrawal failed");
+        if (!success) {
+            revert WithdrawalFailed();
+        }
     }
 
-    function deployedContracts() public view returns (address[] memory) {
+    function deployedContracts() external view returns (address[] memory) {
         return sDeployedContracts;
     }
 }

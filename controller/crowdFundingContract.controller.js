@@ -11,10 +11,12 @@ const getCampaign = async (to) => {
 module.exports = {
     withdrawMilestone: async (req, res) => {
         try {
-            const { campaignAddress, campaignOwnerAddress } = req.body;
+            const { campaignAddress, campaignOwnerAddress, campaignOwnerAddressPrivateKey } = req.body;
             const campaignInstance = await getCampaign(campaignAddress);
 
-            const signer = await campaignInstance.provider.getSigner(campaignOwnerAddress);
+            // const signer = await campaignInstance.provider.getSigner(campaignOwnerAddress);
+            const signer = new ethers.Wallet(campaignOwnerAddressPrivateKey, getProvider()); // For Infura Provider
+            
             const txResponse = await campaignInstance.connect(signer).withdrawMilestone();
             const txReceipt = await txResponse.wait();
 
@@ -32,10 +34,10 @@ module.exports = {
 
     voteOnMilestone: async (req, res) => {
         try {
-            const { vote, fromAddress, campaignAddress } = req.body;
+            const { vote, fromAddress, fromAddressPrivateKey, campaignAddress } = req.body;
             const campaignInstance = await getCampaign(campaignAddress);
-
-            const signer = await campaignInstance.provider.getSigner(fromAddress);
+            // const signer = await campaignInstance.provider.getSigner(fromAddress);
+            const signer = new ethers.Wallet(fromAddressPrivateKey, getProvider()); // For Infura Provider
             const txResponse = await campaignInstance.connect(signer).voteOnMilestone(vote);
             const txReceipt = await txResponse.wait();
             return res.status(200).send({ message: "Success", data: txReceipt });
@@ -46,11 +48,12 @@ module.exports = {
 
     createNewMilestone: async (req, res) => {
         try {
-            const { milestoneCID, votingPeriod, campaignOwnerAddress, campaignAddress } = req.body;
+            const { milestoneCID, votingPeriod, campaignOwnerAddress, campaignOwnerAddressPrivateKey, campaignAddress } = req.body;
             const newVotingPeriod = await getLatestBlockTimeStamp() + votingPeriod;
             const campaignInstance = await getCampaign(campaignAddress);
 
-            const signer = await campaignInstance.provider.getSigner(campaignOwnerAddress);
+            // const signer = await campaignInstance.provider.getSigner(campaignOwnerAddress);
+            const signer = new ethers.Wallet(campaignOwnerAddressPrivateKey, getProvider()); // For Infura Provider
             const txResponse = await campaignInstance.connect(signer).createNewMilestone(milestoneCID, newVotingPeriod);
             const txReceipt = await txResponse.wait();
             return res.status(200).send({ message: "Success", data: txReceipt });
@@ -61,13 +64,16 @@ module.exports = {
 
     makeDonation: async (req, res) => {
         try {
-            const { value, fromAddress, campaignAddress } = req.body;
-            if (!value) {
+            const { value, fromAddress, campaignAddress, fromAddressPrivateKey } = req.body;
+            if (!value || !fromAddress || !fromAddressPrivateKey || !campaignAddress) {
                 return res.status(400).send({ message: "Required fields are missing!" });
             }
             const weiValue = convertToWei(value);
             const campaignInstance = await getCampaign(campaignAddress);
-            const signer = await campaignInstance.provider.getSigner(fromAddress);
+            
+            // const signer = await campaignInstance.provider.getSigner(fromAddress);
+            const signer = new ethers.Wallet(fromAddressPrivateKey, getProvider()); // For Infura Provider
+            
             const crowdFunding = await campaignInstance.connect(signer).makeDonation({ value: weiValue });
             const receipt = await crowdFunding.wait();
             return res.status(200).send({ message: "Success", data: receipt });

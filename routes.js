@@ -12,28 +12,28 @@ router.post("/voteOnMilestone", crowdFundingContractController.voteOnMilestone);
 
 router.post("/withdrawMilestone", crowdFundingContractController.withdrawMilestone);
 
-router.get("/etherBalance", crowdFundingContractController.etherBalance);
+router.post("/etherBalance", crowdFundingContractController.etherBalance);
 
-router.get("/getDonation", crowdFundingContractController.getDonation);
+router.post("/getDonation", crowdFundingContractController.getDonation);
 
-router.get("/campaignOwner", crowdFundingContractController.campaignOwner);
+router.post("/campaignOwner", crowdFundingContractController.campaignOwner);
 
-router.get("/numberOfDonors", crowdFundingContractController.numberOfDonors);
+router.post("/numberOfDonors", crowdFundingContractController.numberOfDonors);
 
-router.get("/showCurrentMilestone", crowdFundingContractController.showCurrentMilestone);
+router.post("/showCurrentMilestone", crowdFundingContractController.showCurrentMilestone);
 
-router.get("/getCampaignDuration", crowdFundingContractController.getCampaignDuration);
+router.post("/getCampaignDuration", crowdFundingContractController.getCampaignDuration);
 
-router.get("/getTargetAmount", crowdFundingContractController.getTargetAmount);
+router.post("/getTargetAmount", crowdFundingContractController.getTargetAmount);
 
-router.get("/getFundingCId", crowdFundingContractController.getFundingCId);
+router.post("/getFundingCId", crowdFundingContractController.getFundingCId);
 
-router.get("/getCampaignEnded", crowdFundingContractController.getCampaignEnded);
+router.post("/getCampaignEnded", crowdFundingContractController.getCampaignEnded);
 
 // Crowd Sourcing Factory Routes
 router.post("/createCrowdFundingContract", crowdSourcingFactoryController.createCrowdFundingContract);
 
-router.get("/deployedContracts", crowdSourcingFactoryController.getDeployedContracts);
+router.get("/getDeployedCampaigns", crowdSourcingFactoryController.getDeployedCampaigns);
 
 router.post("/withdrawFunds", crowdSourcingFactoryController.withdrawFunds);
 

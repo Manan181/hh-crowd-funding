@@ -1,9 +1,26 @@
 //SPDX-License-Identifier:MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
 
-contract CrowdFundingContract is Initializable {
+error MilestoneNotPending();
+error Completed_3_Milestones();
+error NotOwner();
+error CampaignEnded();
+error MilestonePending();
+error NotADonor();
+error VotingStillOn();
+error WithdrawalFailed();
+error InsufficientFunds();
+error AlreadyVoted();
+error InvalidDuration();
+error RefundAlreadyInitiated();
+error RefundAlreadyClaimed();
+error FundingPeriodStillOn();
+error UpkeepNotNeeded();
+
+contract CrowdFundingContract is Initializable, AutomationCompatibleInterface {
     // Type Declarations
     enum MilestoneStatus {
         Approved,
@@ -21,227 +38,243 @@ contract CrowdFundingContract is Initializable {
         MilestoneStatus status;
         MilestoneVote[] votes;
     }
-    
+
     // State Variables
-    bool private sCampaignEnded;
-    address payable private sCampaignOwner;
-    string private sFundingCId;
-    uint256 private sTargetAmount;
-    uint256 private sCampaignDuration;
+    uint32 private sMilestoneCounter;
+    uint32 private sNumberOfWithdrawal;
     uint256 private sAmountDonated;
     uint256 private sNumberOfDonors;
-    uint32 private sMilestoneCounter;
-    uint256 private sApprovedMilestone;
-    uint256 private sNumberOfWithdrawal;
-    uint256 private constant BASE_NUMBER = 10**18;
-    MilestoneStatus public status;
+    uint256 private sFundingGoal;
+    uint256 private sCampaignDuration;
+    uint256 private constant BASE_NUMBER = 10 ** 18;
+    string private sFundingCId;
+    bool private sCampaignEnded;
+    MilestoneStatus private status;
+    address payable private sCampaignOwner;
+    uint256 public refundTimestamp;
+    bool private refundInitiated;
+
+    address[] private sdonorAddresses;
 
     mapping(address => uint256) public donors;
     mapping(uint256 => Milestone) public milestones;
+    mapping(address => uint256) private refundableAmounts;
+    mapping(address => bool) private refundClaimed;
 
     // Events
-    event FundsDonated(address indexed donor, uint256 amount, uint256 date);
-    event FundsWithdrawn(address indexed owner, uint256 amount, uint256 date);
-    event MilestoneCreated(
-        address indexed owner,
-        uint256 datecreated,
-        uint256 period
-    );
+    event FundsDonated(address indexed donor, uint256 amount);
+    event FundsWithdrawn(address indexed owner, uint256 amount);
+    event MilestoneCreated(address indexed owner, uint256 period);
     event MilestoneRejected(uint yesvote, uint novote);
-
+    event MilestoneVoted(uint32 milestoneCounter, address voter, bool vote);
+    event RefundFailed(address donor, uint256 amount);
+    event RefundInitiated();
+    
     // Functions
     function initialize(string calldata _fundingCId, uint256 _amount, uint256 _duration) external initializer {
+        if (_duration <= 0) {
+            revert InvalidDuration();
+        }
         sCampaignOwner = payable(tx.origin);
         sFundingCId = _fundingCId;
-        sTargetAmount = _amount;
+        sFundingGoal = _amount;
         sCampaignDuration = _duration;
+        refundTimestamp = block.timestamp + _duration;
     }
-    
+
     receive() external payable {}
 
-    function makeDonation() public payable {
-        uint256 funds = msg.value;
-        require(!sCampaignEnded, "campaign ended");
-        require(funds > 0, "You did not donate");
-        require(sNumberOfWithdrawal != 3, "no longer taking donation");
+    function makeDonation() external payable {
+        if (sCampaignEnded) revert CampaignEnded();
+        if (msg.value <= 0) revert InsufficientFunds();
+        if (sNumberOfWithdrawal == 3) revert Completed_3_Milestones();
+
         if (donors[msg.sender] == 0) {
             sNumberOfDonors += 1;
+            sdonorAddresses.push(msg.sender);
         }
 
-        donors[msg.sender] += funds;
-        sAmountDonated += funds;
-        emit FundsDonated(msg.sender, funds, block.timestamp);
+        refundableAmounts[msg.sender] += msg.value;
+
+        donors[msg.sender] += msg.value;
+        sAmountDonated += msg.value;
+        emit FundsDonated(msg.sender, msg.value);
     }
 
-    function createNewMilestone(string memory milestoneCID, uint256 votingPeriod) public {
-        require(msg.sender == sCampaignOwner, "you not the owner");
-        //check if we have a pending milestone
+    function createNewMilestone(string memory milestoneCID, uint256 votingPeriod) external {
+        if (msg.sender != sCampaignOwner) {
+            revert NotOwner();
+        }
         //check if we have a pending milestone or no milestone at all
-        require(
-            milestones[sMilestoneCounter].status != MilestoneStatus.Pending,
-            "you have a pending milestone"
-        );
-
+        if (milestones[sMilestoneCounter].status == MilestoneStatus.Pending) {
+            revert MilestonePending();
+        }
         //check if all three milestone has been withdrawn
-        require(sNumberOfWithdrawal != 3, "no more milestone to create");
-
+        if (sNumberOfWithdrawal == 3) {
+            revert Completed_3_Milestones();
+        }
         //create a new milestone increment the milestonecounter
         sMilestoneCounter++;
-
         //voting period for a minimum of 2 weeks before the proposal fails or passes
         Milestone storage newmilestone = milestones[sMilestoneCounter];
         newmilestone.milestoneCID = milestoneCID;
         newmilestone.approved = false;
         newmilestone.votingPeriod = votingPeriod;
         newmilestone.status = MilestoneStatus.Pending;
-        emit MilestoneCreated(msg.sender, block.timestamp, votingPeriod);
+        emit MilestoneCreated(msg.sender, votingPeriod);
     }
 
-    function voteOnMilestone(bool vote) public {
-        //check if the milestone is pending which means we can vote
-        require(
-            milestones[sMilestoneCounter].status == MilestoneStatus.Pending,
-            "can not vote on milestone"
-        );
-        //check if the person has voted already
-        //milestone.votes
-
-        //check if this person is a donor to the cause
-        require(donors[msg.sender] != 0, "you are not a donor");
-
-        uint256 counter = 0;
-        uint256 milestoneVoteArrayLength = milestones[sMilestoneCounter].votes.length;
-        bool voted = false;
-        for (counter; counter < milestoneVoteArrayLength; ++counter) {
-            MilestoneVote memory userVote = milestones[sMilestoneCounter].votes[counter];
-            if (userVote.donorAddress == msg.sender) {
-                //already voted
-                voted = true;
-                break;
+    function voteOnMilestone(bool vote) external {
+        Milestone storage currentMilestone = milestones[sMilestoneCounter];
+        // Check if the milestone is pending which means we can vote
+        if (currentMilestone.status != MilestoneStatus.Pending) {
+            revert MilestoneNotPending();
+        }
+        if (donors[msg.sender] == 0) {
+            revert NotADonor();
+        }
+        // Check if the sender has already voted
+        for (uint256 counter; counter < currentMilestone.votes.length; ++counter) {
+            if (currentMilestone.votes[counter].donorAddress == msg.sender) {
+                revert AlreadyVoted();
             }
         }
-        if (!voted) {
-            //the user has not voted yet
-            MilestoneVote memory userVote;
-            //construct the user vote
-            userVote.donorAddress = msg.sender;
-            userVote.vote = vote;
-            milestones[sMilestoneCounter].votes.push(userVote);
-            
-        }
+        // Push a new vote using memory instance
+        currentMilestone.votes.push(MilestoneVote({ donorAddress: msg.sender, vote: vote }));
+        // Emit an event to track the vote
+        emit MilestoneVoted(sMilestoneCounter, msg.sender, vote);
     }
 
-    function withdrawMilestone() public {
-        require(payable(msg.sender) == sCampaignOwner, "you not the owner");
+    function withdrawMilestone() external {
+        if (msg.sender != sCampaignOwner) {
+            revert NotOwner();
+        }
+        if (block.timestamp <= milestones[sMilestoneCounter].votingPeriod) revert VotingStillOn();
+        // if (block.timestamp < refundTimestamp) revert FundingPeriodStillOn();
+        
+        Milestone storage currentMilestone = milestones[sMilestoneCounter];
+        if (block.timestamp <= currentMilestone.votingPeriod) {
+            revert VotingStillOn();
+        }
+        if (currentMilestone.status != MilestoneStatus.Pending) {
+            revert MilestoneNotPending();
+        }
 
-        //check if the voting period is still on
-        require(
-            block.timestamp > milestones[sMilestoneCounter].votingPeriod,
-            "voting still on"
-        );
-        //check if milestone has ended
-        require(
-            milestones[sMilestoneCounter].status == MilestoneStatus.Pending,
-            "milestone ended"
-        );
+        (uint yesVotes, uint256 noVotes) = _calculateTheVote(currentMilestone.votes);
+        uint256 totalYesVotes = (sNumberOfDonors - noVotes) * BASE_NUMBER;
+        uint256 twoThirdsTotal = (2 * sNumberOfDonors * BASE_NUMBER) / 3;
 
-        //calculate the percentage
-        (uint yesvote, uint256 novote) = _calculateTheVote(milestones[sMilestoneCounter].votes);
-
-        //calculate the vote percentage and make room for those that did not vote
-        uint256 totalYesVote = sNumberOfDonors - novote;
-
-        //check if the yesVote is equal to 2/3 of the total votes
-        uint256 twoThirdofTotal = (2 * sNumberOfDonors * BASE_NUMBER) / 3;
-        uint256 yesVoteCalculation = totalYesVote * BASE_NUMBER;
-
-        //check if the milestone passed 2/3
-        if (yesVoteCalculation >= twoThirdofTotal) {
-            //the milestone succeds payout the money
-            milestones[sMilestoneCounter].approved = true;
+        if (totalYesVotes >= twoThirdsTotal) {
+            currentMilestone.approved = true;
             sNumberOfWithdrawal++;
-            milestones[sMilestoneCounter].status = MilestoneStatus.Approved;
-            //transfer 1/3 of the total balance of the contract
+            currentMilestone.status = MilestoneStatus.Approved;
+
             uint256 contractBalance = address(this).balance;
-            require(contractBalance > 0, "nothing to withdraw");
+            if (contractBalance == 0) {
+                revert InsufficientFunds();
+            }
+
             uint256 amountToWithdraw;
             if (sNumberOfWithdrawal == 1) {
-                //divide by 3 1/3
                 amountToWithdraw = contractBalance / 3;
             } else if (sNumberOfWithdrawal == 2) {
-                //second withdrawal 1/2
                 amountToWithdraw = contractBalance / 2;
             } else {
-                //final withdrawal
                 amountToWithdraw = contractBalance;
                 sCampaignEnded = true;
             }
 
-            bool success = sCampaignOwner.send(amountToWithdraw);
-            require(success, "withdrawal failed");
-            emit FundsWithdrawn(
-                sCampaignOwner,
-                amountToWithdraw,
-                block.timestamp
-            );
-            
+            (bool success, ) = sCampaignOwner.call{ value: amountToWithdraw }("");
+            if (!success) {
+                revert WithdrawalFailed();
+            }
+            emit FundsWithdrawn(sCampaignOwner, amountToWithdraw);
         } else {
-            //the milestone failed
-            milestones[sMilestoneCounter].status = MilestoneStatus.Declined;
-            emit MilestoneRejected(yesvote, novote);
+            currentMilestone.status = MilestoneStatus.Declined;
+            emit MilestoneRejected(yesVotes, noVotes);
+        }
+    }
+
+    function checkUpkeep(bytes memory /* checkData */) public view override returns (bool upkeepNeeded, bytes memory /* performData */) {
+        // bool timePassed = block.timestamp >= refundTimestamp;
+        bool fundingGoalNotReached = sAmountDonated < sFundingGoal;
+        bool campaignNotEnded = !sCampaignEnded;
+        upkeepNeeded = (fundingGoalNotReached && campaignNotEnded);
+        return (upkeepNeeded, "0x0");
+    }
+
+    function performUpkeep(bytes calldata /* performData */) external override {
+        (bool upkeepNeeded, ) = checkUpkeep("");
+        if (refundInitiated) revert RefundAlreadyInitiated();
+        if (!upkeepNeeded) revert UpkeepNotNeeded();
+
+        // Initiate the refund process
+        refundInitiated = true;
+        emit RefundInitiated();
+        uint256 donorsLength = sdonorAddresses.length;
+        for (uint256 counter = 0; counter < donorsLength; ++counter) {
+            address donor = sdonorAddresses[counter];
+            if (!refundClaimed[donor]) {
+                refundClaimed[donor] = true;
+                uint256 refundAmount = refundableAmounts[donor];
+                refundableAmounts[donor] = 0;
+                (bool success, ) = donor.call{ value: refundAmount }("");
+                if (!success) emit RefundFailed(donor, refundAmount);
+            }
         }
     }
 
     function _calculateTheVote(MilestoneVote[] memory votesArray) private pure returns (uint256, uint256) {
         uint256 yesNumber = 0;
         uint256 noNumber = 0;
-        uint256 arrayLength = votesArray.length;
         uint256 counter = 0;
-
-        for (counter; counter < arrayLength; ++counter) {
+        for (counter; counter < votesArray.length; ++counter) {
             if (votesArray[counter].vote == true) {
                 ++yesNumber;
             } else {
                 ++noNumber;
             }
         }
-
         return (yesNumber, noNumber);
     }
-    
-    function etherBalance() public view returns (uint256) {
+
+    function etherBalance() external view returns (uint256) {
         return address(this).balance;
     }
 
-    function getDonation() public view returns (uint256) {
+    function getDonation() external view returns (uint256) {
         return sAmountDonated;
     }
 
-    function campaignOwner() public view returns (address payable) {
+    function campaignOwner() external view returns (address payable) {
         return sCampaignOwner;
     }
 
-    function numberOfDonors() public view returns (uint256) {
+    function numberOfDonors() external view returns (uint256) {
         return sNumberOfDonors;
     }
 
-    function showCurrentMilestone() public view returns (Milestone memory) {
+    function showCurrentMilestone() external view returns (Milestone memory) {
         return milestones[sMilestoneCounter];
     }
 
-    function getCampaignDuration() public view returns (uint256) {
+    function getCampaignDuration() external view returns (uint256) {
         return sCampaignDuration;
     }
 
-    function getTargetAmount() public view returns (uint256) {
-        return sTargetAmount;
+    function getTargetAmount() external view returns (uint256) {
+        return sFundingGoal;
     }
 
-    function getFundingCId() public view returns (string memory) {
+    function getFundingCId() external view returns (string memory) {
         return sFundingCId;
     }
 
-    function getCampaignEnded() public view returns (bool) {
+    function getCampaignEnded() external view returns (bool) {
         return sCampaignEnded;
+    }
+
+    function getMilestoneStatus() external view returns (MilestoneStatus) {
+        return status;
     }
 }

@@ -20,14 +20,15 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     // Verify the deployment
     if (!developmentChains.includes(network.name) && process.env.ETHERSCAN_API_KEY) {
         log("Verifying CrowdFundingContract...");
-        await verify(crowdFund.address, arguments);
+        await verify(crowdFundingContract.address, []);
     }
 
     log("----------------------------------------------------");
     log("Deploying CrowdSourcingFactory...");
+    const arguments = [crowdFundingContract.address];
     const crowdSourcingFactory = await deploy("CrowdSourcingFactory", {
         from: deployer,
-        args: [crowdFundingContract.address],
+        args: arguments,
         log: true,
         waitConfirmations: waitBlockConfirmations,
     });

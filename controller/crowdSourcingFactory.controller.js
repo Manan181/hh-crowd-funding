@@ -3,20 +3,21 @@ const { ethers } = require("hardhat");
 const CrowdSourcingFactory = require("../build/artifacts/contracts/CrowdSourcingFactory.sol/CrowdSourcingFactory.json");
 const { convertToWei, getSigners, getLatestBlockTimeStamp, getProvider } = require("../utils/utils");
 
-const crowdSourcingFactory = new ethers.Contract(process.env.CONTRACT_ADDRESS, CrowdSourcingFactory.abi, getProvider());
+const crowdSourcingFactory = new ethers.Contract(process.env.CROWD_SOURCING_CONTRACT_ADDRESS, CrowdSourcingFactory.abi, getProvider());
 
 module.exports = {
     createCrowdFundingContract: async (req, res) => {
         try {
-            const { fundingCID, amountToRaise, duration, fromAddress, value } = req.body;
-            if (!fundingCID || !amountToRaise || !duration || !fromAddress || !value) {
+            const { fundingCID, amountToRaise, duration, fromAddress, value, fromAddressPrivateKey } = req.body;
+            if (!fundingCID || !amountToRaise || !duration || !fromAddress || !value || !fromAddressPrivateKey) {
                 return res.status(400).send({ message: "Required fields are missing!" });
             }
             const depositInWei = convertToWei(value);
             const amountToRaiseInWei = convertToWei(amountToRaise);
-            const signer = await crowdSourcingFactory.provider.getSigner(fromAddress);
+            // const signer = await crowdSourcingFactory.provider.getSigner(fromAddress); // For Ganache Provider
+            const signer = new ethers.Wallet(fromAddressPrivateKey, getProvider()); // For Infura Provider
             const campaignDuration = await getLatestBlockTimeStamp() + duration;
-
+            
             const crowdFunding = await crowdSourcingFactory.connect(signer).createCrowdFundingContract(fundingCID, amountToRaiseInWei, campaignDuration, { value: depositInWei });
             const receipt = await crowdFunding.wait();
             
@@ -30,7 +31,7 @@ module.exports = {
         }
     },
 
-    getDeployedContracts: async (req, res) => {
+    getDeployedCampaigns: async (req, res) => {
         try {
             const deployedContracts = await crowdSourcingFactory.deployedContracts();
             return res.status(200).send({ message: "Success", data: { deployedContracts }});
@@ -41,8 +42,10 @@ module.exports = {
 
     withdrawFunds: async (req, res) => {
         try {
-            const { owner } = await getSigners();
-            const txResponse = await crowdSourcingFactory.connect(owner).withdrawFunds();
+            const { ownerPrivateKey } = req.body;
+            // const { owner } = await getSigners(); // For Ganache Provider
+            const signer = new ethers.Wallet(ownerPrivateKey, getProvider()); // For Infura Provider
+            const txResponse = await crowdSourcingFactory.connect(signer).withdrawFunds();
             const txReceipt = await txResponse.wait();
             return res.status(200).send({ message: "Success", data: txReceipt });
         } catch (error) {

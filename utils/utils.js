@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { ethers } = require("hardhat");
 
 module.exports = {
@@ -34,7 +35,7 @@ module.exports = {
     },
 
     getProvider: () => {
-        const provider = new ethers.providers.JsonRpcProvider('http://127.0.0.1:7545');
+        const provider = new ethers.providers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
         return provider;
     },
 }

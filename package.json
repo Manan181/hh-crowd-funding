@@ -1,10 +1,11 @@
 {
-  "name": "hardhat-starter-kit",
+  "name": "hh-crowd-funding",
   "license": "MIT",
   "version": "2.0.0",
   "description": "A repo for boilerplate code for testing, deploying, and shipping chainlink solidity code.",
   "scripts": {
     "compile": "hardhat compile",
+    "start": "node server",
     "test-staging": "hardhat test test/staging/*.spec.js --network sepolia",
     "deploy-local": "npx hardhat run scripts/deploy.js --network hardhat",
     "deploy": "hardhat run scripts/deploy.js --network sepolia",

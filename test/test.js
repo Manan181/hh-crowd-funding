@@ -112,14 +112,14 @@ describe("CrowdFunding", function () {
     it("Should not be to create a milestone", async function () {
       const { instanceOne, accountFour, milestoneCID } = await loadFixture(setUpContractUtils);
       const votingPeriod = (await time.latest()) + 2 * 24 * 60 * 60;
-      await expect(instanceOne.connect(accountFour).createNewMilestone(milestoneCID, votingPeriod)).to.be.revertedWith("you not the owner");
+      await expect(instanceOne.connect(accountFour).createNewMilestone(milestoneCID, votingPeriod)).to.be.revertedWithCustomError(instanceOne, "NotOwner");
     });
 
     it("Should not be able to create a milestone", async function () {
       const { instanceOne, otherAccount, milestoneCID } = await loadFixture(setUpContractUtils);
       const votingPeriod = (await time.latest()) + 2 * 24 * 60 * 60;
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod);
-      await expect(instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod)).to.be.revertedWith("you have a pending milestone");
+      await expect(instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod)).to.be.revertedWithCustomError(instanceOne, "MilestonePending");
     });
 
     it("Should be able to vote on a milestone", async function () {
@@ -140,7 +140,7 @@ describe("CrowdFunding", function () {
       const { instanceOne, otherAccount, milestoneCID, accountOne } = await loadFixture(setUpContractUtils);
       const votingPeriod = (await time.latest()) + 2 * 24 * 60 * 60;
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod);
-      await expect(instanceOne.connect(accountOne).voteOnMilestone(true)).to.be.revertedWith("you are not a donor");
+      await expect(instanceOne.connect(accountOne).voteOnMilestone(true)).to.be.revertedWithCustomError(instanceOne, "NotADonor");
     });
 
     it("Should not be able to vote twice on a milestone", async function () {
@@ -149,7 +149,7 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(accountThree).makeDonation({ value: amountToDeposit });
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod);
       await instanceOne.connect(accountThree).voteOnMilestone(true);
-      await instanceOne.connect(accountThree).voteOnMilestone(false);
+      await expect(instanceOne.connect(accountThree).voteOnMilestone(false)).to.be.revertedWithCustomError(instanceOne, "AlreadyVoted");
       const milestone = await instanceOne.showCurrentMilestone();
       expect(+milestone.votes.length).to.be.equal(1);
     });
@@ -166,7 +166,7 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(accountThree).voteOnMilestone(false);
       const balanceBefore = await ethers.provider.getBalance(otherAccount.address);
       console.log("🚀 ~ file: test.js:184 ~ balanceBefore:", balanceBefore);
-      await expect(instanceOne.connect(otherAccount).withdrawMilestone()).to.be.revertedWith("voting still on");
+      await expect(instanceOne.connect(otherAccount).withdrawMilestone()).to.be.revertedWithCustomError(instanceOne, "VotingStillOn");
       const balanceAfter = await ethers.provider.getBalance(otherAccount.address);
       console.log("🚀 ~ file: test.js:188 ~ balanceAfter:", balanceAfter);
       const latestTime = await time.latest();
@@ -260,7 +260,7 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod + 1000000);
       //third milestone withdrawal
       await instanceOne.connect(otherAccount).withdrawMilestone();
-      await expect(instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod + 1000000)).to.be.rejectedWith("no more milestone to create");
+      await expect(instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod + 1000000)).to.be.revertedWithCustomError(instanceOne, "Completed_3_Milestones");
     });
 
     it("Should no longer be able to donate after the 3 milestone withdrawal", async function () {
@@ -284,7 +284,7 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod + 1000000);
       //third milestone withdrawal
       await instanceOne.connect(otherAccount).withdrawMilestone();
-      await expect(instanceOne.connect(accountTwo).makeDonation({ value: amountToDeposit })).to.be.rejectedWith("campaign ended");
+      await expect(instanceOne.connect(accountTwo).makeDonation({ value: amountToDeposit })).to.be.revertedWithCustomError(instanceOne, "CampaignEnded");
     });
 
     it("created milestone fails insufficient vote", async function () {
