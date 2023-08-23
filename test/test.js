@@ -9,7 +9,7 @@ describe("CrowdFunding", function () {
   // and reset Hardhat Network to that snapshot in every test.
 
   async function setUpContractUtils() {
-    const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
+    const ONE_YEAR_IN_SECS = 1 * 24 * 60 * 60;
     const ONE_ETH = 1_000_000_000_000_000_000;
 
     const deposit = ONE_ETH * 0.001;
@@ -75,20 +75,20 @@ describe("CrowdFunding", function () {
     it("Should be able to make donation to a campaign", async function () {
       const { amountToDeposit, someOtherAccount, instanceOne } = await loadFixture(setUpContractUtils);
       await instanceOne.connect(someOtherAccount).makeDonation({ value: amountToDeposit });
-      const amount = await instanceOne.getDonation();
+      const amount = (await instanceOne.getCampaignInfo())[5];
       expect(amount.toString()).to.be.equal(amountToDeposit.toString());
     });
 
     it("Should be able to deposit to the other campaign", async function () {
       const { amountToDeposit, someOtherAccount, instanceTwo } = await loadFixture(setUpContractUtils);
       await instanceTwo.connect(someOtherAccount).makeDonation({ value: amountToDeposit });
-      const amount = await instanceTwo.getDonation();
+      const amount = (await instanceTwo.getCampaignInfo())[5];
       expect(amount.toString()).to.be.equal(amountToDeposit.toString());
     });
 
     it("Should be able to retrieve the campaign owner", async function () {
       const { otherAccount, instanceOne } = await loadFixture(setUpContractUtils);
-      const owner = await instanceOne.campaignOwner();
+      const owner = (await instanceOne.getCampaignInfo())[0];
       expect(owner).to.be.equal(otherAccount.address);
     });
 
@@ -97,14 +97,14 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(otherAccount).makeDonation({ value: amountToDeposit });
       await instanceOne.connect(someOtherAccount).makeDonation({ value: amountToDeposit });
       await instanceOne.connect(otherAccount).makeDonation({ value: amountToDeposit });
-      expect(await instanceOne.numberOfDonors()).to.be.equal(2);
+      expect((await instanceOne.getCampaignInfo())[4]).to.be.equal(2);
     });
 
     it("Should be able to create a milestone", async function () {
       const { instanceOne, otherAccount, milestoneCID } = await loadFixture(setUpContractUtils);
       const votingPeriod = (await time.latest()) + 2 * 24 * 60 * 60;
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod);
-      const milestone = await instanceOne.showCurrentMilestone();
+      const milestone = (await instanceOne.getCampaignInfo())[6];
       const status = milestone.status;
       expect(status).to.be.equal(2);
     });
@@ -132,7 +132,7 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(accountOne).voteOnMilestone(true);
       await instanceOne.connect(accountTwo).voteOnMilestone(true);
       await instanceOne.connect(accountThree).voteOnMilestone(false);
-      const milestone = await instanceOne.showCurrentMilestone();
+      const milestone = (await instanceOne.getCampaignInfo())[6];
       expect(+milestone.votes.length).to.be.equal(3);
     });
 
@@ -150,7 +150,7 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod);
       await instanceOne.connect(accountThree).voteOnMilestone(true);
       await expect(instanceOne.connect(accountThree).voteOnMilestone(false)).to.be.revertedWithCustomError(instanceOne, "AlreadyVoted");
-      const milestone = await instanceOne.showCurrentMilestone();
+      const milestone = (await instanceOne.getCampaignInfo())[6];
       expect(+milestone.votes.length).to.be.equal(1);
     });
 
@@ -298,10 +298,10 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(accountTwo).voteOnMilestone(false);
       await instanceOne.connect(accountThree).voteOnMilestone(false);
       const latestTime = await time.latest();
-      await time.increaseTo(latestTime + (3 * 24 * 60 * 60));
+      await time.increaseTo(latestTime + 90000000000);
       await instanceOne.connect(otherAccount).withdrawMilestone();
       //get the milestone
-      const milestone = await instanceOne.showCurrentMilestone();
+      const milestone = (await instanceOne.getCampaignInfo())[6];
       expect(milestone.status).to.be.equal(1);
     });
 
@@ -316,18 +316,18 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(accountTwo).voteOnMilestone(false);
       await instanceOne.connect(accountThree).voteOnMilestone(false);
       const latestTime = await time.latest();
-      await time.increaseTo(latestTime + (3 * 24 * 60 * 60));
+      await time.increaseTo(latestTime + (20000 * 24 * 60 * 60));
       await instanceOne.connect(otherAccount).withdrawMilestone();
       //create another milestone
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod + (3 * 24 * 60 * 60));
       await instanceOne.connect(accountOne).voteOnMilestone(true);
       await instanceOne.connect(accountTwo).voteOnMilestone(true);
       await instanceOne.connect(accountThree).voteOnMilestone(true);
-      await time.increaseTo(latestTime + (30 * 24 * 60 * 60));
+      await time.increaseTo(latestTime + (21000 * 24 * 60 * 60));
       //withdraw now
       await instanceOne.connect(otherAccount).withdrawMilestone();
       //get the milestone
-      const milestone = await instanceOne.showCurrentMilestone();
+      const milestone = (await instanceOne.getCampaignInfo())[6];
       expect(milestone.status).to.be.equal(0);
     });
   });

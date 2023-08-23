@@ -20,7 +20,7 @@ const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 const REPORT_GAS = process.env.REPORT_GAS;
 
 module.exports = {
-    defaultNetwork: 'sepolia',
+    defaultNetwork: 'ganache',
     solidity: {
         compilers: [
             {

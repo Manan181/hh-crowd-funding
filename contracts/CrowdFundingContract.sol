@@ -2,7 +2,6 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
 
 error MilestoneNotPending();
 error Completed_3_Milestones();
@@ -16,11 +15,11 @@ error InsufficientFunds();
 error AlreadyVoted();
 error InvalidDuration();
 error RefundAlreadyInitiated();
-error RefundAlreadyClaimed();
 error FundingPeriodStillOn();
-error UpkeepNotNeeded();
+error FundingGoalReached();
+error RefundDeclined();
 
-contract CrowdFundingContract is Initializable, AutomationCompatibleInterface {
+contract CrowdFundingContract is Initializable {
     // Type Declarations
     enum MilestoneStatus {
         Approved,
@@ -40,26 +39,25 @@ contract CrowdFundingContract is Initializable, AutomationCompatibleInterface {
     }
 
     // State Variables
-    uint32 private sMilestoneCounter;
-    uint32 private sNumberOfWithdrawal;
-    uint256 private sAmountDonated;
-    uint256 private sNumberOfDonors;
-    uint256 private sFundingGoal;
-    uint256 private sCampaignDuration;
+    uint32 private s_MilestoneCounter;
+    uint32 private s_NumberOfWithdrawal;
+    uint256 private s_AmountDonated;
+    uint256 private s_NumberOfDonors;
+    uint256 private s_FundingGoal;
+    uint256 private s_CampaignDuration;
     uint256 private constant BASE_NUMBER = 10 ** 18;
-    string private sFundingCId;
-    bool private sCampaignEnded;
-    MilestoneStatus private status;
-    address payable private sCampaignOwner;
+    string private s_FundingCId;
+    bool private s_CampaignEnded;
+    address payable private s_CampaignOwner;
     uint256 public refundTimestamp;
-    bool private refundInitiated;
+    bool private s_refundInitiated;
 
-    address[] private sdonorAddresses;
+    address[] private s_donorAddresses;
 
-    mapping(address => uint256) public donors;
-    mapping(uint256 => Milestone) public milestones;
-    mapping(address => uint256) private refundableAmounts;
-    mapping(address => bool) private refundClaimed;
+    mapping(address => uint256) public s_donors;
+    mapping(uint256 => Milestone) public s_milestones;
+    mapping(address => uint256) private s_refundableAmounts;
+    mapping(address => bool) private s_refundClaimed;
 
     // Events
     event FundsDonated(address indexed donor, uint256 amount);
@@ -70,53 +68,60 @@ contract CrowdFundingContract is Initializable, AutomationCompatibleInterface {
     event RefundFailed(address donor, uint256 amount);
     event RefundInitiated();
     
+    // Modifiers
+    modifier checkWithdrawal {
+        unchecked {
+            if (s_NumberOfWithdrawal == 3) revert Completed_3_Milestones();
+        }
+        _;
+    }
+    modifier notOwner {
+        if (msg.sender != s_CampaignOwner) revert NotOwner();
+        _;
+    }
+    modifier campaignEnded {
+        if (s_CampaignEnded) revert CampaignEnded();
+        _;
+    }
+    
     // Functions
     function initialize(string calldata _fundingCId, uint256 _amount, uint256 _duration) external initializer {
         if (_duration <= 0) {
             revert InvalidDuration();
         }
-        sCampaignOwner = payable(tx.origin);
-        sFundingCId = _fundingCId;
-        sFundingGoal = _amount;
-        sCampaignDuration = _duration;
+        s_CampaignOwner = payable(tx.origin);
+        s_FundingCId = _fundingCId;
+        s_FundingGoal = _amount;
+        s_CampaignDuration = _duration;
         refundTimestamp = block.timestamp + _duration;
     }
 
     receive() external payable {}
 
-    function makeDonation() external payable {
-        if (sCampaignEnded) revert CampaignEnded();
+    function makeDonation() campaignEnded checkWithdrawal external payable {
         if (msg.value <= 0) revert InsufficientFunds();
-        if (sNumberOfWithdrawal == 3) revert Completed_3_Milestones();
 
-        if (donors[msg.sender] == 0) {
-            sNumberOfDonors += 1;
-            sdonorAddresses.push(msg.sender);
+        if (s_donors[msg.sender] == 0) {
+            s_NumberOfDonors += 1;
+            s_donorAddresses.push(msg.sender);
         }
 
-        refundableAmounts[msg.sender] += msg.value;
+        s_refundableAmounts[msg.sender] += msg.value;
 
-        donors[msg.sender] += msg.value;
-        sAmountDonated += msg.value;
+        s_donors[msg.sender] += msg.value;
+        s_AmountDonated += msg.value;
         emit FundsDonated(msg.sender, msg.value);
     }
 
-    function createNewMilestone(string memory milestoneCID, uint256 votingPeriod) external {
-        if (msg.sender != sCampaignOwner) {
-            revert NotOwner();
-        }
+    function createNewMilestone(string memory milestoneCID, uint256 votingPeriod) notOwner checkWithdrawal external {
         //check if we have a pending milestone or no milestone at all
-        if (milestones[sMilestoneCounter].status == MilestoneStatus.Pending) {
+        if (s_milestones[s_MilestoneCounter].status == MilestoneStatus.Pending) {
             revert MilestonePending();
         }
-        //check if all three milestone has been withdrawn
-        if (sNumberOfWithdrawal == 3) {
-            revert Completed_3_Milestones();
-        }
         //create a new milestone increment the milestonecounter
-        sMilestoneCounter++;
+        s_MilestoneCounter++;
         //voting period for a minimum of 2 weeks before the proposal fails or passes
-        Milestone storage newmilestone = milestones[sMilestoneCounter];
+        Milestone storage newmilestone = s_milestones[s_MilestoneCounter];
         newmilestone.milestoneCID = milestoneCID;
         newmilestone.approved = false;
         newmilestone.votingPeriod = votingPeriod;
@@ -125,12 +130,12 @@ contract CrowdFundingContract is Initializable, AutomationCompatibleInterface {
     }
 
     function voteOnMilestone(bool vote) external {
-        Milestone storage currentMilestone = milestones[sMilestoneCounter];
+        Milestone storage currentMilestone = s_milestones[s_MilestoneCounter];
         // Check if the milestone is pending which means we can vote
         if (currentMilestone.status != MilestoneStatus.Pending) {
             revert MilestoneNotPending();
         }
-        if (donors[msg.sender] == 0) {
+        if (s_donors[msg.sender] == 0) {
             revert NotADonor();
         }
         // Check if the sender has already voted
@@ -142,31 +147,26 @@ contract CrowdFundingContract is Initializable, AutomationCompatibleInterface {
         // Push a new vote using memory instance
         currentMilestone.votes.push(MilestoneVote({ donorAddress: msg.sender, vote: vote }));
         // Emit an event to track the vote
-        emit MilestoneVoted(sMilestoneCounter, msg.sender, vote);
+        emit MilestoneVoted(s_MilestoneCounter, msg.sender, vote);
     }
 
-    function withdrawMilestone() external {
-        if (msg.sender != sCampaignOwner) {
-            revert NotOwner();
-        }
-        if (block.timestamp <= milestones[sMilestoneCounter].votingPeriod) revert VotingStillOn();
-        // if (block.timestamp < refundTimestamp) revert FundingPeriodStillOn();
-        
-        Milestone storage currentMilestone = milestones[sMilestoneCounter];
+    function withdrawMilestone() notOwner external {
+        Milestone storage currentMilestone = s_milestones[s_MilestoneCounter];
         if (block.timestamp <= currentMilestone.votingPeriod) {
             revert VotingStillOn();
         }
         if (currentMilestone.status != MilestoneStatus.Pending) {
             revert MilestoneNotPending();
         }
+        if (block.timestamp < refundTimestamp) revert FundingPeriodStillOn();
 
         (uint yesVotes, uint256 noVotes) = _calculateTheVote(currentMilestone.votes);
-        uint256 totalYesVotes = (sNumberOfDonors - noVotes) * BASE_NUMBER;
-        uint256 twoThirdsTotal = (2 * sNumberOfDonors * BASE_NUMBER) / 3;
+        uint256 totalYesVotes = (s_NumberOfDonors - noVotes) * BASE_NUMBER;
+        uint256 twoThirdsTotal = (2 * s_NumberOfDonors * BASE_NUMBER) / 3;
 
         if (totalYesVotes >= twoThirdsTotal) {
             currentMilestone.approved = true;
-            sNumberOfWithdrawal++;
+            s_NumberOfWithdrawal++;
             currentMilestone.status = MilestoneStatus.Approved;
 
             uint256 contractBalance = address(this).balance;
@@ -175,50 +175,44 @@ contract CrowdFundingContract is Initializable, AutomationCompatibleInterface {
             }
 
             uint256 amountToWithdraw;
-            if (sNumberOfWithdrawal == 1) {
+            if (s_NumberOfWithdrawal == 1) {
                 amountToWithdraw = contractBalance / 3;
-            } else if (sNumberOfWithdrawal == 2) {
+            } else if (s_NumberOfWithdrawal == 2) {
                 amountToWithdraw = contractBalance / 2;
             } else {
                 amountToWithdraw = contractBalance;
-                sCampaignEnded = true;
+                s_CampaignEnded = true;
             }
 
-            (bool success, ) = sCampaignOwner.call{ value: amountToWithdraw }("");
+            (bool success, ) = s_CampaignOwner.call{ value: amountToWithdraw }("");
             if (!success) {
                 revert WithdrawalFailed();
             }
-            emit FundsWithdrawn(sCampaignOwner, amountToWithdraw);
+            emit FundsWithdrawn(s_CampaignOwner, amountToWithdraw);
         } else {
             currentMilestone.status = MilestoneStatus.Declined;
             emit MilestoneRejected(yesVotes, noVotes);
         }
     }
 
-    function checkUpkeep(bytes memory /* checkData */) public view override returns (bool upkeepNeeded, bytes memory /* performData */) {
-        // bool timePassed = block.timestamp >= refundTimestamp;
-        bool fundingGoalNotReached = sAmountDonated < sFundingGoal;
-        bool campaignNotEnded = !sCampaignEnded;
-        upkeepNeeded = (fundingGoalNotReached && campaignNotEnded);
-        return (upkeepNeeded, "0x0");
-    }
+    function performUpkeep(bytes calldata /* performData */) campaignEnded external {
+        if (block.timestamp < refundTimestamp) revert RefundDeclined();
+        if (s_AmountDonated >= s_FundingGoal) revert FundingGoalReached();
+        if (s_refundInitiated) revert RefundAlreadyInitiated();
 
-    function performUpkeep(bytes calldata /* performData */) external override {
-        (bool upkeepNeeded, ) = checkUpkeep("");
-        if (refundInitiated) revert RefundAlreadyInitiated();
-        if (!upkeepNeeded) revert UpkeepNotNeeded();
-
-        // Initiate the refund process
-        refundInitiated = true;
+        s_refundInitiated = true;
         emit RefundInitiated();
-        uint256 donorsLength = sdonorAddresses.length;
+        uint256 donorsLength = s_donorAddresses.length;
         for (uint256 counter = 0; counter < donorsLength; ++counter) {
-            address donor = sdonorAddresses[counter];
-            if (!refundClaimed[donor]) {
-                refundClaimed[donor] = true;
-                uint256 refundAmount = refundableAmounts[donor];
-                refundableAmounts[donor] = 0;
+            address donor = s_donorAddresses[counter];
+            if (!s_refundClaimed[donor]) {
+                s_refundClaimed[donor] = true;
+                uint256 refundAmount = s_refundableAmounts[donor];
+                s_refundableAmounts[donor] = 0;
                 (bool success, ) = donor.call{ value: refundAmount }("");
+                if (success) {
+                    s_CampaignEnded = true;
+                }
                 if (!success) emit RefundFailed(donor, refundAmount);
             }
         }
@@ -241,40 +235,8 @@ contract CrowdFundingContract is Initializable, AutomationCompatibleInterface {
     function etherBalance() external view returns (uint256) {
         return address(this).balance;
     }
-
-    function getDonation() external view returns (uint256) {
-        return sAmountDonated;
-    }
-
-    function campaignOwner() external view returns (address payable) {
-        return sCampaignOwner;
-    }
-
-    function numberOfDonors() external view returns (uint256) {
-        return sNumberOfDonors;
-    }
-
-    function showCurrentMilestone() external view returns (Milestone memory) {
-        return milestones[sMilestoneCounter];
-    }
-
-    function getCampaignDuration() external view returns (uint256) {
-        return sCampaignDuration;
-    }
-
-    function getTargetAmount() external view returns (uint256) {
-        return sFundingGoal;
-    }
-
-    function getFundingCId() external view returns (string memory) {
-        return sFundingCId;
-    }
-
-    function getCampaignEnded() external view returns (bool) {
-        return sCampaignEnded;
-    }
-
-    function getMilestoneStatus() external view returns (MilestoneStatus) {
-        return status;
+    
+    function getCampaignInfo() external view returns (address, uint256, uint256, string memory, uint256, uint256, Milestone memory, bool, uint32, uint256) {
+        return (s_CampaignOwner, s_CampaignDuration, s_FundingGoal, s_FundingCId, s_NumberOfDonors, s_AmountDonated, s_milestones[s_MilestoneCounter], s_CampaignEnded, s_NumberOfWithdrawal, address(this).balance);
     }
 }
