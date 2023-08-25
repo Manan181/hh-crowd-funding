@@ -185,10 +185,10 @@ describe("CrowdFunding", function () {
       await instanceOne.connect(accountThree).voteOnMilestone(false);
       const latestTime = await time.latest();
       await time.increaseTo(latestTime + 90000000000);
-      const balanceBefore = await instanceOne.etherBalance();
+      const campaignInfoBefore = await instanceOne.getCampaignInfo();
       await instanceOne.connect(otherAccount).withdrawMilestone();
-      const balanceAfter = await instanceOne.etherBalance();
-      expect(+balanceBefore.toString()).to.be.greaterThan(+balanceAfter.toString());
+      const campaignInfoAfter = await instanceOne.getCampaignInfo();
+      expect(+campaignInfoBefore[9].toString()).to.be.greaterThan(+campaignInfoAfter[9].toString());
     });
 
     it("Should be able to withdraw milestone fund stage two", async function () {
@@ -205,12 +205,12 @@ describe("CrowdFunding", function () {
       await time.increaseTo(latestTime + 90000000000);
       await instanceOne.connect(otherAccount).withdrawMilestone();
       //create new milestone instance
-      const balanceBefore = await instanceOne.etherBalance();
+      const campaignInfoBefore = await instanceOne.getCampaignInfo();
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod + 1000000);
       //second milestone withdrawal
       await instanceOne.connect(otherAccount).withdrawMilestone();
-      const balanceAfter = await instanceOne.etherBalance();
-      expect(+balanceBefore.toString()).to.be.greaterThan(+balanceAfter.toString());
+      const campaignInfoAfter = await instanceOne.getCampaignInfo();
+      expect(+campaignInfoBefore[9].toString()).to.be.greaterThan(+campaignInfoAfter[9].toString());
     });
 
     it("Should be able to withdraw milestone fund stage three", async function () {
@@ -233,10 +233,10 @@ describe("CrowdFunding", function () {
       //third milestone creation
       await instanceOne.connect(otherAccount).createNewMilestone(milestoneCID, votingPeriod + 1000000);
       //third milestone withdrawal
-      const balanceBefore = await instanceOne.etherBalance();
+      const campaignInfoBefore = await instanceOne.getCampaignInfo();
       await instanceOne.connect(otherAccount).withdrawMilestone();
-      const balanceAfter = await instanceOne.etherBalance();
-      expect(+balanceBefore.toString()).to.be.greaterThan(+balanceAfter.toString());
+      const campaignInfoAfter = await instanceOne.getCampaignInfo();
+      expect(+campaignInfoBefore[9].toString()).to.be.greaterThan(+campaignInfoAfter[9].toString());
     });
 
     it("Should no longer be able to create milestone after 3 withdrawals", async function () {
