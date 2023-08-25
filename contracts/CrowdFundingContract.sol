@@ -231,10 +231,6 @@ contract CrowdFundingContract is Initializable {
         }
         return (yesNumber, noNumber);
     }
-
-    function etherBalance() external view returns (uint256) {
-        return address(this).balance;
-    }
     
     function getCampaignInfo() external view returns (address, uint256, uint256, string memory, uint256, uint256, Milestone memory, bool, uint32, uint256) {
         return (s_CampaignOwner, s_CampaignDuration, s_FundingGoal, s_FundingCId, s_NumberOfDonors, s_AmountDonated, s_milestones[s_MilestoneCounter], s_CampaignEnded, s_NumberOfWithdrawal, address(this).balance);
