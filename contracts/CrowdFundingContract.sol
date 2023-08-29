@@ -8,6 +8,7 @@ error Completed_3_Milestones();
 error NotOwner();
 error CampaignEnded();
 error MilestonePending();
+error MilestonesLimitReached();
 error NotADonor();
 error VotingStillOn();
 error WithdrawalFailed();
@@ -17,7 +18,6 @@ error InvalidDuration();
 error RefundAlreadyInitiated();
 error FundingPeriodStillOn();
 error FundingGoalReached();
-error RefundDeclined();
 
 contract CrowdFundingContract is Initializable {
     // Type Declarations
@@ -39,7 +39,7 @@ contract CrowdFundingContract is Initializable {
     }
 
     // State Variables
-    uint32 private s_MilestoneCounter;
+    // uint32 private s_MilestoneCounter;
     uint32 private s_NumberOfWithdrawal;
     uint256 private s_AmountDonated;
     uint256 private s_NumberOfDonors;
@@ -83,6 +83,10 @@ contract CrowdFundingContract is Initializable {
         if (s_CampaignEnded) revert CampaignEnded();
         _;
     }
+    modifier checkFunding {
+        if (block.timestamp < refundTimestamp) revert FundingPeriodStillOn();
+        _; 
+    }
     
     // Functions
     function initialize(string calldata _fundingCId, uint256 _amount, uint256 _duration) external initializer {
@@ -113,24 +117,23 @@ contract CrowdFundingContract is Initializable {
         emit FundsDonated(msg.sender, msg.value);
     }
 
-    function createNewMilestone(string memory milestoneCID, uint256 votingPeriod) notOwner checkWithdrawal external {
-        //check if we have a pending milestone or no milestone at all
-        if (s_milestones[s_MilestoneCounter].status == MilestoneStatus.Pending) {
+    function createNewMilestone(string memory milestoneCID, uint256 votingPeriod, uint32 _milestoneCounter) notOwner checkWithdrawal external {
+        if (s_milestones[_milestoneCounter].status == MilestoneStatus.Pending) {
             revert MilestonePending();
         }
-        //create a new milestone increment the milestonecounter
-        s_MilestoneCounter++;
-        //voting period for a minimum of 2 weeks before the proposal fails or passes
-        Milestone storage newmilestone = s_milestones[s_MilestoneCounter];
+        if (_milestoneCounter > 3) revert MilestonesLimitReached();
+                
+        Milestone storage newmilestone = s_milestones[_milestoneCounter];
         newmilestone.milestoneCID = milestoneCID;
         newmilestone.approved = false;
         newmilestone.votingPeriod = votingPeriod;
         newmilestone.status = MilestoneStatus.Pending;
+        delete newmilestone.votes;
         emit MilestoneCreated(msg.sender, votingPeriod);
     }
 
-    function voteOnMilestone(bool vote) external {
-        Milestone storage currentMilestone = s_milestones[s_MilestoneCounter];
+    function voteOnMilestone(bool vote, uint32 _milestoneCounter) checkFunding external {
+        Milestone storage currentMilestone = s_milestones[_milestoneCounter];
         // Check if the milestone is pending which means we can vote
         if (currentMilestone.status != MilestoneStatus.Pending) {
             revert MilestoneNotPending();
@@ -147,18 +150,17 @@ contract CrowdFundingContract is Initializable {
         // Push a new vote using memory instance
         currentMilestone.votes.push(MilestoneVote({ donorAddress: msg.sender, vote: vote }));
         // Emit an event to track the vote
-        emit MilestoneVoted(s_MilestoneCounter, msg.sender, vote);
+        emit MilestoneVoted(_milestoneCounter, msg.sender, vote);
     }
 
-    function withdrawMilestone() notOwner external {
-        Milestone storage currentMilestone = s_milestones[s_MilestoneCounter];
+    function withdrawMilestone(uint32 _milestoneCounter) notOwner checkFunding external {
+        Milestone storage currentMilestone = s_milestones[_milestoneCounter];
         if (block.timestamp <= currentMilestone.votingPeriod) {
             revert VotingStillOn();
         }
         if (currentMilestone.status != MilestoneStatus.Pending) {
             revert MilestoneNotPending();
         }
-        if (block.timestamp < refundTimestamp) revert FundingPeriodStillOn();
 
         (uint yesVotes, uint256 noVotes) = _calculateTheVote(currentMilestone.votes);
         uint256 totalYesVotes = (s_NumberOfDonors - noVotes) * BASE_NUMBER;
@@ -195,8 +197,7 @@ contract CrowdFundingContract is Initializable {
         }
     }
 
-    function performUpkeep(bytes calldata /* performData */) campaignEnded external {
-        if (block.timestamp < refundTimestamp) revert RefundDeclined();
+    function performUpkeep(bytes calldata /* performData */) campaignEnded checkFunding external {
         if (s_AmountDonated >= s_FundingGoal) revert FundingGoalReached();
         if (s_refundInitiated) revert RefundAlreadyInitiated();
 
@@ -232,7 +233,11 @@ contract CrowdFundingContract is Initializable {
         return (yesNumber, noNumber);
     }
     
-    function getCampaignInfo() external view returns (address, uint256, uint256, string memory, uint256, uint256, Milestone memory, bool, uint32, uint256) {
-        return (s_CampaignOwner, s_CampaignDuration, s_FundingGoal, s_FundingCId, s_NumberOfDonors, s_AmountDonated, s_milestones[s_MilestoneCounter], s_CampaignEnded, s_NumberOfWithdrawal, address(this).balance);
+    function getCampaignInfo() external view returns (address, uint256, uint256, string memory, uint256, uint256, bool, uint32, uint256, address[] memory) {
+        return (s_CampaignOwner, s_CampaignDuration, s_FundingGoal, s_FundingCId, s_NumberOfDonors, s_AmountDonated, s_CampaignEnded, s_NumberOfWithdrawal, address(this).balance, s_donorAddresses);
+    }
+    
+    function getMilestones(uint32 _milestoneCounter) external view returns (Milestone memory) {
+        return s_milestones[_milestoneCounter];
     }
 }
